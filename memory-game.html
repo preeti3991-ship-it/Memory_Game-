@@ -4,6 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memory Game</title>
+    <script>
+        const THEME_STORAGE_KEY = 'memoryGameTheme';
+
+        try {
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+            if (savedTheme === 'light' || savedTheme === 'dark') {
+                document.documentElement.dataset.theme = savedTheme;
+            }
+        } catch (error) {
+            console.error('Unable to read the saved theme preference.', error);
+        }
+    </script>
     <style>
         /* Reset default styles and set up CSS custom properties for theming */
         :root {
@@ -13,6 +25,22 @@
             --card-front: #ffffff;
             --text-color: #333333;
             --success-color: #4caf50;
+            --surface-color: #ffffff;
+            --button-hover-color: #1565c0;
+            --button-active-color: #0d47a1;
+            --surface-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --background-color: #121821;
+            --card-back: #1565c0;
+            --card-front: #263546;
+            --text-color: #e8edf4;
+            --surface-color: #1e2937;
+            --button-hover-color: #0d47a1;
+            --button-active-color: #08306b;
+            --surface-shadow: 0 2px 6px rgba(0,0,0,0.35);
         }
 
         * {
@@ -54,10 +82,10 @@
             justify-content: space-around;
             flex-wrap: wrap;
             gap: 1rem;
-            background: white;
+            background: var(--surface-color);
             padding: 1rem;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: var(--surface-shadow);
             margin-bottom: 2rem;
         }
 
@@ -76,6 +104,10 @@
             margin-bottom: 2rem;
         }
 
+        .theme-toggle {
+            margin-left: 0.5rem;
+        }
+
         button {
             padding: 0.5rem 1rem;
             border: none;
@@ -88,11 +120,16 @@
         }
 
         button:hover {
-            background-color: #1565c0;
+            background-color: var(--button-hover-color);
         }
 
         button.active {
-            background-color: #0d47a1;
+            background-color: var(--button-active-color);
+        }
+
+        button:focus-visible {
+            outline: 3px solid var(--primary-color);
+            outline-offset: 3px;
         }
 
         /* Game grid styles with responsive layout */
@@ -173,7 +210,7 @@
         }
 
         .modal-content {
-            background: white;
+            background: var(--surface-color);
             padding: 2rem;
             border-radius: 8px;
             text-align: center;
@@ -190,7 +227,7 @@
         .scores-list {
             max-width: 600px;
             margin: 1rem auto;
-            background: white;
+            background: var(--surface-color);
             padding: 1rem;
             border-radius: 8px;
         }
@@ -200,6 +237,10 @@
             .controls {
                 flex-direction: column;
                 align-items: center;
+            }
+
+            .theme-toggle {
+                margin-left: 0;
             }
 
             .game-grid {
@@ -240,6 +281,7 @@
         <div class="grid-selector">
             <button class="grid-btn active" data-size="4">4x4 Grid</button>
             <button class="grid-btn" data-size="6">6x6 Grid</button>
+            <button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false">Theme: Light</button>
         </div>
 
         <!-- Game grid -->
@@ -286,8 +328,28 @@
             modal: document.querySelector('.modal'),
             finalStats: document.querySelector('.final-stats'),
             gridButtons: document.querySelectorAll('.grid-btn'),
-            scoresList: document.querySelector('.scores-list')
+            scoresList: document.querySelector('.scores-list'),
+            themeToggle: document.querySelector('.theme-toggle')
         };
+
+        let currentTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+
+        function setTheme(theme, persist = false) {
+            currentTheme = theme;
+            document.documentElement.dataset.theme = theme;
+            const isDark = theme === 'dark';
+            elements.themeToggle.textContent = `Theme: ${isDark ? 'Dark' : 'Light'}`;
+            elements.themeToggle.setAttribute('aria-label', `Switch to ${isDark ? 'light' : 'dark'} theme`);
+            elements.themeToggle.setAttribute('aria-pressed', String(isDark));
+
+            if (persist) {
+                try {
+                    localStorage.setItem(THEME_STORAGE_KEY, theme);
+                } catch (error) {
+                    console.error('Unable to save the theme preference.', error);
+                }
+            }
+        }
 
         // Card symbols (emojis) for both grid sizes
         const symbols = {
@@ -397,10 +459,14 @@
                     date: new Date().toISOString()
                 };
                 
-                const scores = JSON.parse(localStorage.getItem('memoryGameScores') || '[]');
-                scores.push(score);
-                scores.sort((a, b) => a.moves - b.moves);
-                localStorage.setItem('memoryGameScores', JSON.stringify(scores.slice(0, 5)));
+                try {
+                    const scores = JSON.parse(localStorage.getItem('memoryGameScores') || '[]');
+                    scores.push(score);
+                    scores.sort((a, b) => a.moves - b.moves);
+                    localStorage.setItem('memoryGameScores', JSON.stringify(scores.slice(0, 5)));
+                } catch (error) {
+                    console.error('Unable to save the game score.', error);
+                }
                 
                 // Show win modal
                 elements.finalStats.textContent = `
@@ -416,15 +482,20 @@
 
         // Update the display of best scores
         function updateScoresList() {
-            const scores = JSON.parse(localStorage.getItem('memoryGameScores') || '[]');
-            elements.scoresList.innerHTML = scores.length ? 
-                scores.map((score, index) => `
-                    <p>${index + 1}. ${score.gridSize}x${score.gridSize} Grid - 
-                       ${score.moves} Moves, 
-                       Time: ${Math.floor(score.time / 60)}:${(score.time % 60).toString().padStart(2, '0')}, 
-                       Rating: ${score.rating}</p>
-                `).join('') :
-                '<p>No scores yet. Start playing to set some records!</p>';
+            try {
+                const scores = JSON.parse(localStorage.getItem('memoryGameScores') || '[]');
+                elements.scoresList.innerHTML = scores.length ?
+                    scores.map((score, index) => `
+                        <p>${index + 1}. ${score.gridSize}x${score.gridSize} Grid -
+                           ${score.moves} Moves,
+                           Time: ${Math.floor(score.time / 60)}:${(score.time % 60).toString().padStart(2, '0')},
+                           Rating: ${score.rating}</p>
+                    `).join('') :
+                    '<p>No scores yet. Start playing to set some records!</p>';
+            } catch (error) {
+                console.error('Unable to load saved game scores.', error);
+                elements.scoresList.innerHTML = '<p>Best scores are unavailable in this browser session.</p>';
+            }
         }
 
         // Handle card flip logic
@@ -482,6 +553,10 @@
             }
         });
 
+        elements.themeToggle.addEventListener('click', () => {
+            setTheme(currentTheme === 'light' ? 'dark' : 'light', true);
+        });
+
         document.querySelector('.play-again').addEventListener('click', () => {
             elements.modal.style.display = 'none';
             initializeGrid();
@@ -499,6 +574,7 @@
         });
 
         // Initialize game
+        setTheme(currentTheme);
         updateScoresList();
         initializeGrid();
     </script>
